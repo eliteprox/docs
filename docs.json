@@ -33,9 +33,8 @@
           {
             "group": "Builder API",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "integration/user-management",
+              "integration/user-tokens"
             ]
           },
           {
