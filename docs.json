@@ -33,8 +33,27 @@
           {
             "group": "Builder API",
             "pages": [
-              "integration/user-management",
-              "integration/user-tokens"
+              "ai-tools/cursor",
+              "ai-tools/claude-code",
+              "ai-tools/windsurf"
+            ]
+          },
+          {
+            "group": "Billing API",
+            "pages": [
+              "integration/billing",
+              "integration/plans"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "groups": [
+          {
+            "group": "API documentation",
+            "pages": [
+              "api-reference/introduction"
             ]
           },
           {
@@ -47,9 +66,9 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Mintlify docs",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
+          "anchor": "Blog",
+          "href": "https://mintlify.com/blog",
+          "icon": "newspaper"
         }
       ]
     }

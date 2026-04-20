@@ -1,0 +1,114 @@
+---
+title: Plans
+description: List, create, update, and delete billing plans for your app. Plans define included units, overage rates, and capability bundles.
+---
+
+Plans define pricing tiers for your app. The active plan and subscription window drive overage in the [billing summary](/integration/billing).
+
+## Authentication
+
+Plan routes use **`getAuthorizedProviderApp`** only: a **logged-in provider dashboard** session whose user is the app owner, a platform admin, or a `providerAdmins` team member. **Confidential M2M / Basic auth is not accepted** on `/plans` (unlike [billing summary](/integration/billing) and the Usage API in [`pymthouse` `docs/builder-api.md`](https://github.com/eliteprox/pymthouse/blob/main/docs/builder-api.md)).
+
+**POST**, **PUT**, and **DELETE** additionally require **`canEditProviderApp`** (same session, with edit rights).
+
+## Base path
+
+```http
+/api/v1/apps/{clientId}/plans
+```
+
+`{clientId}` is the public `app_…` OAuth client id.
+
+---
+
+## List plans
+
+```http
+GET /api/v1/apps/{clientId}/plans
+```
+
+Returns every plan for the app, each with nested **capabilities** (pipeline/model bundles).
+
+### Response shape
+
+Each plan includes: `id`, `clientId`, `name`, `type` (`free` | `subscription` | `usage`), `priceAmount`, `priceCurrency`, `status`, `includedUnits` and `overageRateWei` as strings or `null`, and `capabilities` (array).
+
+---
+
+## Create a plan
+
+```http
+POST /api/v1/apps/{clientId}/plans
+Content-Type: application/json
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `name` | Yes | Display name. |
+| `type` | No | Defaults to `free`. `subscription` requires `includedUnits` and `overageRateWei` (non-negative integer strings). |
+| `priceAmount`, `priceCurrency` | No | Defaults `0` / `USD`. |
+| `status` | No | `active` or `inactive`; default `active`. |
+| `capabilities` | No | Array of `{ pipeline, modelId, slaTargetScore?, slaTargetP95Ms?, maxPricePerUnit? }`. |
+
+**201 Created** body: `{ "id": "<new-plan-uuid>" }`.
+
+---
+
+## Update a plan
+
+```http
+PUT /api/v1/apps/{clientId}/plans
+Content-Type: application/json
+```
+
+Body must include **`id`** (plan UUID). Omitted fields keep existing values. If **`capabilities`** is present, it **replaces** all bundles for that plan; omit the key to leave bundles unchanged.
+
+**200 OK**: `{ "success": true }`.
+
+---
+
+## Delete a plan
+
+```http
+DELETE /api/v1/apps/{clientId}/plans?planId=<uuid>
+```
+
+Removes the plan and its capability bundles. Prefer **`status: inactive`** via PUT if subscribers might still reference the plan.
+
+**200 OK**: `{ "success": true }`. **404** if the plan is missing or not owned by this app.
+
+---
+
+## Errors
+
+| Status | Typical cause |
+| --- | --- |
+| `400` | Missing `name`, invalid `subscription` billing fields, malformed `capabilities`. |
+| `403` | Session cannot edit this app. |
+| `404` | Unknown `clientId` or plan id. |
+
+---
+
+## Examples
+
+Call **GET/POST/PUT/DELETE** from a **trusted context** that has the provider dashboard session (browser on the PymtHouse console, or server-side with the user’s session cookie). Example with session cookie:
+
+```bash
+export BASE_URL="https://your-pymthouse.example"
+export CLIENT_ID="app_yourClientId"
+export SESSION_COOKIE="next-auth.session-token=..."
+
+curl -sS -b "${SESSION_COOKIE}" \
+  "${BASE_URL}/api/v1/apps/${CLIENT_ID}/plans" | jq .
+
+curl -sS -X POST -b "${SESSION_COOKIE}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Free","type":"free"}' \
+  "${BASE_URL}/api/v1/apps/${CLIENT_ID}/plans"
+```
+
+Do not expose plan mutation to end users; keep cookies server-side or use the in-app UI.
+
+## Implementation reference
+
+Canonical contract: [`pymthouse` `docs/builder-api.md`](https://github.com/eliteprox/pymthouse/blob/main/docs/builder-api.md) (Billing API → Plans). Code: `src/app/api/v1/apps/[id]/plans/route.ts`.

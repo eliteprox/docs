@@ -1,0 +1,194 @@
+---
+title: Billing summary
+description: Retrieve the current billing period, active plan, usage totals, daily timeline, and overage calculations for your app.
+---
+
+The billing summary endpoint gives your backend a single snapshot of everything relevant to the current billing cycle: which plan the app is on, the active subscription period, cumulative usage totals, a day-by-day fee timeline, and any overage charges that have accrued.
+
+All monetary values are **wei as decimal strings** to preserve precision across the full BigInt range.
+
+## Authentication
+
+Two auth modes are accepted. The tenant boundary is enforced identically in both: the `clientId` in the URL path must match the authenticated principal's app.
+
+### Confidential client (recommended for server-to-server)
+
+```http
+GET /api/v1/apps/{clientId}/billing HTTP/1.1
+Authorization: Basic base64(m2m_id:m2m_secret)
+```
+
+### Provider dashboard session
+
+A logged-in session whose user is the app's owner, a platform admin, or a `providerAdmins` team member may call this endpoint without Basic auth.
+
+<Note>
+  Requests that satisfy neither auth mode, or whose authenticated principal does not match the path `clientId`, receive **`404 Not Found`**. The endpoint deliberately does not distinguish "unauthenticated" from "not found" to avoid leaking app existence.
+</Note>
+
+## Endpoint
+
+```http
+GET /api/v1/apps/{clientId}/billing
+```
+
+### Path parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `clientId` | string | OAuth `client_id` of the developer app (`app_…`). Must match the authenticated client. |
+
+No query parameters.
+
+## Response
+
+### 200 OK
+
+```json
+{
+  "clientId": "app_f4c21e7ac5f35d3e91bfad7f",
+  "plan": {
+    "id": "plan-uuid",
+    "type": "subscription",
+    "name": "Pro",
+    "priceAmount": "49.00",
+    "priceCurrency": "USD",
+    "includedUnits": "100000",
+    "overageRateWei": "1000000000000",
+    "status": "active"
+  },
+  "subscription": {
+    "id": "sub-uuid",
+    "status": "active",
+    "currentPeriodStart": "2026-04-01T00:00:00.000Z",
+    "currentPeriodEnd": "2026-04-30T23:59:59.999Z"
+  },
+  "cycle": {
+    "periodStart": "2026-04-01T00:00:00.000Z",
+    "periodEnd": "2026-04-30T23:59:59.999Z",
+    "usage": {
+      "requestCount": 8420,
+      "totalFeeWei": "8420000000000000",
+      "totalUnits": "108300"
+    },
+    "timeline": [
+      { "date": "2026-04-01", "requestCount": 310, "feeWei": "310000000000000" },
+      { "date": "2026-04-02", "requestCount": 0,   "feeWei": "0" }
+    ],
+    "overage": {
+      "overageUnits": "8300",
+      "overageWei": "8300000000000000"
+    }
+  },
+  "platformCutPercent": 10
+}
+```
+
+### Response fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `clientId` | string | Echo of the path `clientId`. |
+| `plan` | object \| null | Active plan for the app. `null` if no plan is configured. |
+| `plan.type` | `free` \| `subscription` \| `usage` | Determines how overage is calculated. |
+| `plan.includedUnits` | string \| null | Units included in the base price. Numeric string or `null` for free plans. |
+| `plan.overageRateWei` | string \| null | Per-unit overage charge in wei. Numeric string or `null` for free plans. |
+| `subscription` | object \| null | Owner's active subscription. `null` when no active subscription exists; the period falls back to the calendar month. |
+| `subscription.currentPeriodStart` | string | ISO 8601 start of the current billing period. |
+| `subscription.currentPeriodEnd` | string | ISO 8601 end of the current billing period. |
+| `cycle.periodStart` | string | Effective period start (subscription period or calendar month). |
+| `cycle.periodEnd` | string | Effective period end. |
+| `cycle.usage.requestCount` | integer | Number of usage records in the period. |
+| `cycle.usage.totalFeeWei` | string | Cumulative fees in wei, as a decimal string. |
+| `cycle.usage.totalUnits` | string | Cumulative units consumed, as a decimal string. |
+| `cycle.timeline` | array | One entry per calendar day in the period. Days with no usage have `requestCount: 0` and `feeWei: "0"`. |
+| `cycle.timeline[].date` | string | `YYYY-MM-DD` date key (UTC). |
+| `cycle.timeline[].requestCount` | integer | Requests recorded on this day. |
+| `cycle.timeline[].feeWei` | string | Fees on this day in wei. |
+| `cycle.overage.overageUnits` | string | Units consumed beyond `plan.includedUnits`. `"0"` for free plans or when below the included quota. |
+| `cycle.overage.overageWei` | string | Overage charge in wei (`overageUnits × plan.overageRateWei`). |
+| `platformCutPercent` | number \| null | Platform fee percentage applied to payments. `null` if not configured. |
+
+<Warning>
+  All `*Wei` fields are decimal strings, not numbers. They can exceed `Number.MAX_SAFE_INTEGER`. Parse with `BigInt(field)` in JavaScript or an equivalent in your language. Use `viem`'s `formatEther` (or equivalent) for human-readable display.
+</Warning>
+
+## Plan types and overage logic
+
+| Plan type | `includedUnits` | `overageRateWei` | Overage calculated? |
+| --- | --- | --- | --- |
+| `free` | `null` | `null` | No |
+| `subscription` | Required | Required | Yes — when `totalUnits > includedUnits` |
+| `usage` | Optional | Optional | Yes — when both fields are set and `totalUnits > includedUnits` |
+
+For `free` plans, `overageUnits` and `overageWei` are always `"0"`.
+
+## Period fallback
+
+When the app has no active subscription, the billing period defaults to the **current calendar month in UTC** (midnight on the 1st to the last millisecond of the last day). This fallback applies whenever `subscription` is `null` in the response.
+
+## Example
+
+```bash
+export BASE_URL="https://your-pymthouse.example"
+export CLIENT_ID="app_yourClientId"
+export M2M_ID="m2m_yourClientId"
+export M2M_SECRET="pmth_cs_yourSecret"
+
+curl -sS \
+  -u "${M2M_ID}:${M2M_SECRET}" \
+  "${BASE_URL}/api/v1/apps/${CLIENT_ID}/billing" | jq .
+```
+
+Extract overage in wei with `jq`:
+
+```bash
+curl -sS \
+  -u "${M2M_ID}:${M2M_SECRET}" \
+  "${BASE_URL}/api/v1/apps/${CLIENT_ID}/billing" \
+  | jq '.cycle.overage.overageWei'
+```
+
+Display current period total in ETH (Node.js):
+
+```bash
+RESPONSE=$(curl -sS \
+  -u "${M2M_ID}:${M2M_SECRET}" \
+  "${BASE_URL}/api/v1/apps/${CLIENT_ID}/billing")
+
+node -e "
+  const data = $(echo $RESPONSE | jq -c .);
+  const wei = BigInt(data.cycle.usage.totalFeeWei);
+  const eth = Number(wei) / 1e18;
+  console.log(eth.toFixed(6) + ' ETH');
+"
+```
+
+## Error responses
+
+| Status | Condition |
+| --- | --- |
+| `404 Not Found` | No authenticated principal, credentials valid but for a different app, or `clientId` does not resolve to a known app. |
+
+## Security boundaries
+
+- Tenant isolation: the authenticated M2M client's `appId` must equal the path `clientId`. A valid credential for a different app returns `404`.
+- Provider sessions must be the app owner, a platform admin, or a `providerAdmins` team member.
+- No secrets, signer material, or per-request payloads are returned.
+- Confidential client secrets must stay server-side. Do not call this endpoint from the browser with Basic auth.
+
+## Key design decisions
+
+1. **Single-call snapshot.** Plan, subscription, usage totals, timeline, and overage are assembled in one response so dashboard UIs can render a complete billing view without multiple round trips.
+2. **Day-granularity timeline, not raw records.** The timeline buckets fee and request data by calendar day (UTC), keeping the response size bounded. For raw per-request data, use the Usage API (`GET /api/v1/apps/{clientId}/usage`) documented in [`pymthouse` `docs/builder-api.md`](https://github.com/eliteprox/pymthouse/blob/main/docs/builder-api.md#usage-api).
+3. **Calendar-month fallback when no subscription.** Apps in a trial or free-tier state still get a consistent period reference (the current calendar month) rather than an empty response.
+4. **`404` for all auth and tenant-mismatch failures.** Prevents enumeration of valid `clientId`s — same pattern as the Usage API in [`builder-api.md`](https://github.com/eliteprox/pymthouse/blob/main/docs/builder-api.md#usage-api).
+
+## Implementation tasks
+
+- Parse all `*Wei` fields with `BigInt` before any arithmetic. Do not cast to `Number` before comparing or summing.
+- Use the `timeline` array to drive sparklines or bar charts in your billing dashboard — every calendar day in the period is always present, so you never need to fill gaps client-side.
+- When `plan` is `null`, surface a "No plan configured" state rather than treating it as an error.
+- For overage alerting, poll this endpoint on a schedule and compare `cycle.overage.overageUnits` against thresholds you define in your system.
+- Cross-reference `cycle.usage.totalFeeWei` with the Usage API in [`builder-api.md`](https://github.com/eliteprox/pymthouse/blob/main/docs/builder-api.md#usage-api) for per-user attribution when you need a detailed breakdown.
+- To create or change plans, use [Plans](/integration/plans) from a provider dashboard session (not M2M).
