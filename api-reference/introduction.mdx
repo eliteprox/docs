@@ -1,0 +1,34 @@
+---
+title: API reference
+description: How the PymtHouse HTTP APIs and OIDC surface fit together, and where to find endpoint-level documentation.
+---
+
+PymtHouse exposes a **unified OpenID Connect issuer** plus **REST-style Builder and billing APIs** under a single base URL. This tab collects **procedural guides** and machine-readable **OpenAPI** definitions where they exist; the live **authorization, token, and user-management** paths are also listed in your tenant’s [OIDC discovery](https://openid.net/specs/openid-connect-discovery-1_0.html) document so your client always tracks endpoint rotations.
+
+## Base URL and discovery
+
+- **Local development (issuer and APIs):** `http://localhost:3001/api/v1/oidc` as described on the [home page](/) — use discovery rather than hard-coding path suffixes.
+- **Discovery (runtime source of truth):** `GET {issuer}/.well-known/openid-configuration` returns all authorization, token, and JWKS endpoints for your environment.
+
+Always resolve OAuth and OIDC URLs from discovery in production. Hard-coded paths are brittle when routes or hostnames change.
+
+## What lives in “API reference” vs “Builder guides”
+
+| Need | Go to |
+| --- | --- |
+| End-to-end auth flows, PKCE, device code, token exchange | [Builder guides](/quickstart) tab |
+| **Usage API** (aggregated usage, billing analytics) | [Usage API](/integration/usage-api) in this tab |
+| User management, app tokens, billing endpoints | [Builder guides](/integration/user-management) and related pages in that tab |
+
+The Builder guides tab holds **narrative, flow-oriented** documentation. This tab is the right place for **request shapes, query parameters, and error semantics** once you already know *which* API you are calling.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Usage API" icon="chart-bar" href="/integration/usage-api">
+    `GET` aggregated usage and fees for your app (and optional per-user breakdown).
+  </Card>
+  <Card title="User management" icon="users" href="/integration/user-management">
+    Create and manage end-users in your app tenant via the Builder API.
+  </Card>
+</CardGroup>
